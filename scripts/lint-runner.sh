@@ -121,7 +121,14 @@ const imageIssues = [];
 for (const [sourcePath, item] of metadata.entries()) {
   if (item.graph_type !== "source") continue;
   for (const imagePath of item._signals.imagePaths || []) {
-    if (!targetPaths.has(imagePath)) imageIssues.push({ source_path: sourcePath, image_path: imagePath });
+    // 本 fork：image_paths 写的是相对 wiki/ 根的路径（assets/images/xxx.png），
+    // 而 targetPaths 以 vault 根为基准（wiki/assets/images/xxx.png）。
+    // 两者都试，任命中即视为存在，避免误报缺失。
+    const normalized = imagePath.replace(/^\.\//, "");
+    const withWikiPrefix = normalized.startsWith("wiki/") ? normalized : `wiki/${normalized}`;
+    if (!targetPaths.has(normalized) && !targetPaths.has(withWikiPrefix)) {
+      imageIssues.push({ source_path: sourcePath, image_path: imagePath });
+    }
   }
 }
 imageIssues.sort((left, right) => `${left.source_path}\0${left.image_path}`.localeCompare(`${right.source_path}\0${right.image_path}`, "en"));
