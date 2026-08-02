@@ -177,6 +177,40 @@ function parseWikilinks(buffer, sourcePath) {
   let lineStartIndex = 0;
   let positionBytesAdvanced = 0;
 
+  // 本 fork：跳过开头的 YAML frontmatter 区块（--- ... ---）。
+  // frontmatter 里的 sources: / source_path: / image_paths: 是溯源字段，
+  // 由 source-signal-eligibility 单独解析，不当正文 wikilink，
+  // 否则其中的 [[3. 资源/...]]、[[sources/...]] 会被误报为断链。
+  // 用 handledAsFence 同款思路：逐行推进，直到 frontmatter 闭合，再继续主循环。
+  {
+    const firstNewline = text.indexOf("\n");
+    const firstLine = firstNewline === -1 ? text : text.slice(0, firstNewline);
+    if (/^---\s*$/.test(firstLine)) {
+      let cursor = firstNewline + 1;
+      let closed = false;
+      while (cursor <= text.length) {
+        const nextNl = text.indexOf("\n", cursor);
+        const lineEnd = nextNl === -1 ? text.length : nextNl;
+        const fmLine = text.slice(cursor, lineEnd);
+        if (/^(?:---|\.\.\.)\s*$/.test(fmLine)) {
+          // frontmatter 闭合行：吃掉该行（含换行），主循环从正文开始
+          cursor = nextNl === -1 ? text.length + 1 : nextNl + 1;
+          positionBytesAdvanced += Buffer.byteLength(fmLine, "utf8") + (nextNl === -1 ? 0 : 1);
+          lineNumber += 1;
+          closed = true;
+          break;
+        }
+        // frontmatter 内容行：整行跳过，不产生 occurrence
+        positionBytesAdvanced += Buffer.byteLength(fmLine, "utf8") + (nextNl === -1 ? 0 : 1);
+        lineNumber += 1;
+        if (nextNl === -1) { cursor = text.length + 1; break; }
+        cursor = nextNl + 1;
+      }
+      if (closed) lineStartIndex = cursor;
+      // 若 frontmatter 未闭合（closed=false），保持 lineStartIndex=0 按原文解析，不误伤
+    }
+  }
+
   while (lineStartIndex <= text.length) {
     const nextNewlineIndex = text.indexOf("\n", lineStartIndex);
     const lineEndIndex = nextNewlineIndex === -1 ? text.length : nextNewlineIndex;

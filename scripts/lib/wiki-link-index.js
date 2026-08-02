@@ -40,7 +40,13 @@ function buildWikiTargetIndex(inventory) {
     pathItems.push(item);
     portablePaths.set(pathKey, pathItems);
 
-    if (item.kind === "markdown") {
+    // 本 fork：裸名（basename）索引只收 wiki 图谱节点（wiki/entities|topics|
+    // sources|comparisons|synthesis|queries）与根级 markdown（index/log/purpose）。
+    // vault 内其他 markdown（3. 资源/文献笔记原文、wiki/raw/ 原始素材、个人笔记）
+    // 仍进 exactPaths/portablePaths 供显式路径解析，但不进裸名索引——否则裸名
+    // [[大路朝西]] 会与 wiki 外的同名原文歧义，产生噪音。显式路径 [[3. 资源/...]] 不受影响。
+    const isRootMarkdown = item.kind === "markdown" && !item.path.includes("/");
+    if (item.kind === "markdown" && (item.graphType || isRootMarkdown)) {
       const basenameKey = portablePathKey(path.posix.basename(item.path, ".md"));
       const basenameItems = portableBasenames.get(basenameKey) || [];
       basenameItems.push(item);
