@@ -157,6 +157,38 @@ for (const item of report.source_metadata) {
 }
 sourceSignal.pages.sort((left, right) => left.path.localeCompare(right.path, "en"));
 
+// 本 fork：topic/entity 页正文禁用 `> ` 引用块（卢氏规则5——卢的话即正文，重点用加粗；
+// 引外人/经典融进正文点名）。`> ` 只留给公式与 source 页"原文精彩摘录"区。
+// 这里机械列出 topic/entity 页正文里所有 `> ` 行，交 AI 复核；不做人名/语义判定。
+// 排除 frontmatter 与 ``` 代码块；排除 source 页（其摘录区合法）。
+const blockquoteIssues = [];
+for (const item of report.inventory.lintSources) {
+  if (!["topic", "entity"].includes(item.graphType)) continue;
+  const absPath = path.join(kbRoot, item.path);
+  let lines;
+  try {
+    lines = fs.readFileSync(absPath, "utf8").split("\n");
+  } catch {
+    continue;
+  }
+  let inFrontmatter = false;
+  let frontmatterDone = false;
+  let inFence = false;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (!frontmatterDone && i === 0 && trimmed === "---") { inFrontmatter = true; continue; }
+    if (inFrontmatter && trimmed === "---") { inFrontmatter = false; frontmatterDone = true; continue; }
+    if (inFrontmatter) continue;
+    if (trimmed.startsWith("```")) { inFence = !inFence; continue; }
+    if (inFence) continue;
+    if (/^>\s?/.test(trimmed)) {
+      blockquoteIssues.push({ path: item.path, line: i + 1, text: trimmed.slice(0, 60) });
+    }
+  }
+}
+blockquoteIssues.sort((left, right) => left.path.localeCompare(right.path, "en") || left.line - right.line);
+
 const derived = {
   orphan_count: orphanPages.length,
   orphan_paths: orphanPages,
@@ -169,7 +201,9 @@ const derived = {
   index_resolved_target_paths: indexResolvedTargetPaths,
   image_issue_count: imageIssues.length,
   image_issues: imageIssues,
-  source_signal: sourceSignal
+  source_signal: sourceSignal,
+  blockquote_count: blockquoteIssues.length,
+  blockquote_issues: blockquoteIssues
 };
 const output = {
   derived,
@@ -240,6 +274,8 @@ for (const [reason, label] of [
   for (const page of pages) console.log(`  - ${page.path}`);
 }
 console.log("");
+
+section("引用块使用（topic/entity 页正文出现 `> `，按规则5 应去引用块）", blockquoteIssues.map((item) => `${item.path}:${item.line} ${item.text}`), "（无违规引用块）");
 
 section("歧义链接（同名候选，未建边）", warningRows("ambiguous_wikilink"), "（无歧义链接）");
 section("待创建链接（尚未建边）", warningRows("pending_wikilink"), "（无待创建链接）");
